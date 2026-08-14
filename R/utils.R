@@ -1,4 +1,4 @@
-%||% <- function(x, y) {
+"%||%" <- function(x, y) {
   if (is.null(x))
     y
   else x
@@ -140,7 +140,7 @@ makeId <- function(x) {
 }
 
 
-%inT% <- function(x, table) {
+"%inT%" <- function(x, table) {
   if (!is.null(table) && ! "" %in% table) {
     x %in% table
   } else {
@@ -150,7 +150,7 @@ makeId <- function(x) {
 
 
 
-%inF% <- function(x, table) {
+"%inF%" <- function(x, table) {
   if (!is.null(table) && ! "" %in% table) {
     x %in% table
   } else {
