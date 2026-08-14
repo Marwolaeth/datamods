@@ -1,5 +1,3 @@
-
-
 #' @title Edit modal
 #'
 #' @description The `edit_modal` function generates a modal window with the variables to edit
@@ -14,7 +12,7 @@
 #' @param var_edit vector of `character` which allows to choose the editable columns
 #' @param var_mandatory vector of `character` which allows to choose obligatory fields to fill
 #' @param modal_size `character` which allows to choose the size of the modalDialog. One of "s" for small, "m" (the default) for medium, "l" for large, or "xl" for extra large.
-#' @param modal_easy_close `boolean` If TRUE, modalDialog can be dismissed by clicking outside the dialog box, or be pressing the Escape key. If FALSE (the default), modalDialog can't be dismissed in those ways; instead it must be dismissed by clicking on a modalButton(), or from a call to removeModal() on the server.
+#' @param modal_easy_close `boolean` If TRUE, modalDialog can be dismissed by clicking outside the dialog box, or be pressing the Escape key. If FALSE (the default), modalDialog can't be dismissed[...]
 #' @param session The `session` object passed to function given to shinyServer
 #'
 #' @importFrom shiny showModal modalDialog actionButton
@@ -38,7 +36,8 @@ edit_modal <- function(default = list(),
   ns <- session$ns
 
   if (length(var_edit) > 0) {
-    data <- data[, ..var_edit]
+    # allow subsetting by character vector of column names
+    data <- data[, var_edit, drop = FALSE]
   }
 
   showModal(modalDialog(
@@ -254,22 +253,29 @@ edit_input_form <- function(default = list(),
 #' @noRd
 #'
 #' @importFrom reactable reactable colDef
-#' @importFrom data.table copy setnames
 table_display <- function(data, colnames = NULL, reactable_options = NULL) {
 
-  data <- copy(data)
+  # coerce to tibble for consistent behavior
+  data <- dplyr::as_tibble(data)
   if (!is.null(colnames)) {
-    setnames(data, old = seq_along(colnames), new = colnames)
+    # rename columns by position if colnames length matches
+    if (length(colnames) == ncol(data)) {
+      names(data) <- colnames
+    } else {
+      # try to rename available positions
+      valid_idx <- seq_len(min(length(colnames), ncol(data)))
+      names(data)[valid_idx] <- colnames[valid_idx]
+    }
   }
 
   cols <- reactable_options$columns %||% list()
-  if (all(is.na(data$.datamods_edit_update))) {
+  if (is.null(data$.datamods_edit_update) || all(is.na(data$.datamods_edit_update))) {
     cols$.datamods_edit_update <- colDef(show = FALSE)
   } else {
     cols$.datamods_edit_update <- col_def_update()
   }
 
-  if (all(is.na(data$.datamods_edit_delete))) {
+  if (is.null(data$.datamods_edit_delete) || all(is.na(data$.datamods_edit_delete))) {
     cols$.datamods_edit_delete <- colDef(show = FALSE)
   } else {
     cols$.datamods_edit_delete <- col_def_delete()
@@ -287,23 +293,36 @@ table_display <- function(data, colnames = NULL, reactable_options = NULL) {
 }
 
 #' @importFrom reactable updateReactable getReactableState
-#' @importFrom data.table copy setnames
 update_table <- function(data, colnames) {
-  data <- copy(data)
-  setnames(data, old = seq_along(colnames), new = colnames)
+  data <- dplyr::as_tibble(data)
+  if (!is.null(colnames)) {
+    if (length(colnames) == ncol(data)) {
+      names(data) <- colnames
+    } else {
+      valid_idx <- seq_len(min(length(colnames), ncol(data)))
+      names(data)[valid_idx] <- colnames[valid_idx]
+    }
+  }
   page <- getReactableState(outputId = "table", name = "page")
   updateReactable("table", data = data, page = page)
   return(data)
 }
 
 format_edit_data <- function(data, colnames, internal_colnames = NULL) {
-  data <- as.data.table(data)
+  data <- dplyr::as_tibble(data)
   vars_datamods_edit <- intersect(c(".datamods_id", ".datamods_edit_update", ".datamods_edit_delete"), names(data))
-  data <- data[, -..vars_datamods_edit]
+  if (length(vars_datamods_edit) > 0) {
+    data <- data[, !(names(data) %in% vars_datamods_edit), drop = FALSE]
+  }
   if (is.null(internal_colnames))
     internal_colnames <- seq_along(colnames)
-  setnames(data, old = internal_colnames, new = colnames, skip_absent = TRUE)
-  data[]
+
+  # rename selected internal positions to provided colnames (skip absent)
+  idx <- internal_colnames[internal_colnames <= ncol(data)]
+  if (length(idx) > 0) {
+    names(data)[idx] <- colnames[seq_along(idx)]
+  }
+  data
 }
 
 rename_edit <- function(data, var_labels) {
@@ -351,7 +370,6 @@ get_variables_default <- function(default, column_names, internal_names) {
 #' @noRd
 #'
 #' @importFrom reactable colDef
-#'
 col_def_update <- function() {
   colDef(
     name = i18n("Update"),
@@ -401,7 +419,6 @@ btn_update <- function(inputId) {
 #' @return A column definition object that can be used to customize the delete column in reactable().
 #' @noRd
 #' @importFrom reactable colDef
-#'
 col_def_delete <- function() {
   reactable::colDef(
     name = i18n("Delete"),
@@ -457,7 +474,6 @@ btn_delete <- function(inputId) {
 #' @importFrom shiny modalDialog actionButton
 #' @importFrom htmltools tagList tags css
 #' @importFrom phosphoricons ph
-#'
 confirmation_window <- function(inputId, ..., title = NULL) {
   modalDialog(
     title = tagList(
@@ -535,4 +551,3 @@ notification_info <- function(title, text, use_notify = TRUE) {
     )
   }
 }
-
