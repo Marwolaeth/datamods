@@ -1,8 +1,6 @@
-
-
 #' @title Shiny module to interactively edit a `data.frame`
 #'
-#' @description The module generates different options to edit a `data.frame`: adding, deleting and modifying rows, exporting data (csv and excel), choosing editable columns, choosing mandatory columns.
+#' @description The module generates different options to edit a `data.frame`: adding, deleting and modifying rows, exporting data (csv and excel), choosing editable columns, choosing mandatory col[...] 
 #' This module returns the edited table with the user modifications.
 #'
 #' @param id Module ID
@@ -43,51 +41,8 @@ edit_data_ui <- function(id) {
 }
 
 #' @title Shiny module to interactively edit a `data.frame`
-#'
-#' @param id Module ID
-#' @param data_r data_r `reactive` function containing a `data.frame` to use in the module.
-#' @param add `boolean`, if `TRUE`, allows you to add a row in the table via a button at the top right.
-#' @param update `boolean`, if `TRUE`, allows you to modify a row of the table via a button located in the table on the row you want to edit.
-#' @param delete `boolean`, if `TRUE`, allows a row to be deleted from the table via a button in the table.
-#' @param download_csv if `TRUE`, allows to export the table in csv format via a download button.
-#' @param download_excel if `TRUE`, allows to export the table in excel format via a download button.
-#' @param file_name_export `character` that allows you to choose the export name of the downloaded file.
-#' @param var_edit vector of `character` which allows to choose the names of the editable columns.
-#' @param var_mandatory vector of `character` which allows to choose obligatory fields to fill.
-#' @param var_multiline vector of `character` specifying column names that should use multi-line text inputs (textAreaInput) instead of single-line text inputs (textInput). Useful for longer text fields like descriptions, comments, or articles where multiple lines of text are expected. Only meaningful for character variables.
-#' @param var_labels named list, where names are colnames and values are labels to be used in edit modal.
-#' @param add_default_values Default values to use for input control when adding new data, e.g. `list(my_var_text = "Default text to display")`.
-#' @param n_column Number of column in the edit modal window, must be a number that divide 12 since it use Bootstrap grid system with [shiny::column()].
-#' @param return_class Class of returned data: `data.frame`, `data.table`, `tbl_df` (tibble) or `raw`.
-#' @param reactable_options Options passed to [reactable::reactable()].
-#' @param modal_size `character` which allows to choose the size of the modalDialog. One of "s" for small, "m" (the default) for medium, "l" for large, or "xl" for extra large.
-#' @param modal_easy_close `boolean` If TRUE, modalDialog can be dismissed by clicking outside the dialog box, or be pressing the Escape key. If FALSE (the default), modalDialog can't be dismissed in those ways; instead it must be dismissed by clicking on a modalButton(), or from a call to removeModal() on the server.
-#' @param callback_add,callback_update,callback_delete Functions to be executed just before an action (add, update or delete) is performed on the data.
-#'  Functions used must be like `function(data, row) {...}` where :
-#'    * `data` will be the data in the table at the moment the function is called
-#'    * `row` will contain either a new row of data (add), an updated row (update) or the row that will be deleted (delete).
-#'
-#'  If the return value of a callback function is not truthy (see [shiny::isTruthy()]) then the action is cancelled.
-#' @param only_callback Only use callbacks, don't alter data within the module.
-#' @param use_notify Display information or not to user through [shinybusy::notify()].
-#'
-#'
-#'
-#' @return the edited `data.frame` in reactable format with the user modifications
-#'
-#' @name edit-data
-#'
-#' @importFrom shiny moduleServer eventReactive reactiveValues is.reactive reactive renderUI actionButton observeEvent isTruthy showModal removeModal downloadButton downloadHandler
-#' @importFrom data.table copy as.data.table := copy setnames as.data.table setattr
-#' @importFrom reactable renderReactable reactableOutput getReactableState
-#' @importFrom phosphoricons ph
-#' @importFrom writexl write_xlsx
-#' @importFrom utils write.csv
-#' @importFrom htmltools tagList
-#' @importFrom rlang is_function is_list
-#'
+#' ...
 #' @export
-#'
 edit_data_server <- function(id,
                              data_r = reactive(NULL),
                              add = TRUE,
@@ -131,13 +86,17 @@ edit_data_server <- function(id,
         colnames = NULL,
         mandatory = NULL,
         multiline = NULL,
-        edit = NULL
+        edit = NULL,
+        internal_colnames = NULL,
+        labels = NULL
       )
 
       # Data data_r() with added columns ".datamods_edit_update" et ".datamods_edit_delete" ---
       data_init_r <- eventReactive(data_r(), {
         req(data_r())
-        data <- data_r()
+        data <- as.data.frame(data_r())
+
+        # resolve reactive args
         if (is.reactive(var_mandatory))
           var_mandatory <- var_mandatory()
         if (is.reactive(var_multiline))
@@ -150,34 +109,48 @@ edit_data_server <- function(id,
           var_edit <- var_edit()
         if (is.null(var_edit))
           var_edit <- names(data)
-        data <- as.data.table(data)
-        data_rv$colnames <- copy(colnames(data))
+
+        # store original colnames for display
+        orig_colnames <- colnames(data)
+        data_rv$colnames <- orig_colnames
+
+        # work on tibble/data.frame but create internal names for consistent UI mapping
+        data <- dplyr::as_tibble(data)
+        if (ncol(data) > 0) {
+          names(data) <- paste0("col_", seq_along(data))
+          data_rv$internal_colnames <- names(data)
+        } else {
+          data_rv$internal_colnames <- character(0)
+        }
+
+        # map mandatory/edit/multiline from provided original names to internal names
+        data_rv$mandatory <- data_rv$internal_colnames[which(data_rv$colnames %in% var_mandatory)]
+        data_rv$edit <- data_rv$internal_colnames[which(data_rv$colnames %in% var_edit)]
+
+        # determine which of var_multiline are actual character columns using original data
         if (!is.null(var_multiline)) {
           var_multiline <- intersect(var_multiline, var_edit)
-          var_multiline <- var_multiline[sapply(data[, var_multiline, with = FALSE], is.character)]
+          # use original data types
+          original_df <- as.data.frame(data_r())
+          var_multiline <- var_multiline[sapply(original_df[var_multiline], is.character)]
         }
-        if (ncol(data) > 0) {
-          setnames(data, paste0("col_", seq_along(data)))
-          data_rv$internal_colnames <- copy(colnames(data))
-        }
-        data_rv$mandatory <- data_rv$internal_colnames[data_rv$colnames %in% var_mandatory]
-        data_rv$edit <- data_rv$internal_colnames[data_rv$colnames %in% var_edit]
-        data_rv$multiline <- data_rv$internal_colnames[data_rv$colnames %in% var_multiline]
+        data_rv$multiline <- data_rv$internal_colnames[which(data_rv$colnames %in% var_multiline)]
+
+        # build labels mapping (internal names -> labels)
         data_rv$labels <- get_variables_labels(var_labels, data_rv$colnames, data_rv$internal_colnames)
 
-        data[, .datamods_id := seq_len(.N)]
+        # add internal helper columns
+        n <- nrow(data)
+        data$.datamods_id <- seq_len(n)
 
         if (is.reactive(update)) {
           update <- update()
         }
 
         if (isTRUE(update)) {
-          data[, .datamods_edit_update := as.character(seq_len(.N))]
-          data[, .datamods_edit_update := list(
-            lapply(.datamods_edit_update, btn_update(ns("update")))
-          )]
+          data$.datamods_edit_update <- lapply(seq_len(n), function(i) btn_update(ns("update"))(i))
         } else {
-          data[, .datamods_edit_update := NA]
+          data$.datamods_edit_update <- rep(NA_character_, n)
         }
 
         if (is.reactive(delete)) {
@@ -185,12 +158,9 @@ edit_data_server <- function(id,
         }
 
         if (isTRUE(delete)) {
-        data[, .datamods_edit_delete := as.character(seq_len(.N))]
-        data[, .datamods_edit_delete := list(
-          lapply(.datamods_edit_delete, btn_delete(ns("delete")))
-        )]
+          data$.datamods_edit_delete <- lapply(seq_len(n), function(i) btn_delete(ns("delete"))(i))
         } else {
-          data[, .datamods_edit_delete := NA]
+          data$.datamods_edit_delete <- rep(NA_character_, n)
         }
 
         data_rv$data <- data
@@ -252,8 +222,7 @@ edit_data_server <- function(id,
 
       observeEvent(input$add_row, {
         req(data_r())
-        data <- copy(data_rv$data)
-        data <- as.data.table(data)
+        data <- data_rv$data
 
         for (var in data_rv$mandatory) {
           if (!isTruthy(input[[var]])) {
@@ -273,12 +242,14 @@ edit_data_server <- function(id,
               input[[x]] %||% NA
             }
           )
-          id <- max(data$.datamods_id) + 1
-          results_inputs[[".datamods_id"]] <- id
-          results_inputs[[".datamods_edit_update"]] <- if (update) list(btn_update(ns("update"))(id)) else NA
-          results_inputs[[".datamods_edit_delete"]] <- if (delete) list(btn_delete(ns("delete"))(id)) else NA
 
-          new <- as.data.table(results_inputs)
+          # build helper columns
+          id <- if (nrow(data) == 0) 1L else max(data$.datamods_id, na.rm = TRUE) + 1L
+          results_inputs[[".datamods_id"]] <- id
+          results_inputs[[".datamods_edit_update"]] <- if (update) list(btn_update(ns("update"))(id)) else NA_character_
+          results_inputs[[".datamods_edit_delete"]] <- if (delete) list(btn_delete(ns("delete"))(id)) else NA_character_
+
+          new <- tibble::as_tibble(results_inputs)
 
           res_callback <- callback_add(
             format_edit_data(data, data_rv$colnames),
@@ -286,7 +257,7 @@ edit_data_server <- function(id,
           )
 
           if (isTruthy(res_callback) & !isTRUE(only_callback)) {
-            data <- rbind(data, new[, .SD, .SDcols = !anyNA], use.names = TRUE, fill = TRUE)
+            data <- dplyr::bind_rows(data, new)
             data_rv$data <- data
             removeModal()
             update_table(data, data_rv$colnames)
@@ -319,9 +290,9 @@ edit_data_server <- function(id,
 
       # Update a row ---
       observeEvent(input$update, {
-        data <- copy(data_rv$data)
-        data <- as.data.table(data)
-        row <- data[.datamods_id == input$update]
+        data <- data_rv$data
+        idx_row <- which(data$.datamods_id == input$update)
+        row <- if (length(idx_row) == 1) data[idx_row, , drop = FALSE] else NULL
         edit_modal(
           default = row,
           title = i18n("Update row"),
@@ -339,8 +310,7 @@ edit_data_server <- function(id,
 
       observeEvent(input$update_row, {
         req(data_r())
-        data <- copy(data_rv$data)
-        data <- as.data.table(data)
+        data <- data_rv$data
 
         for (var in data_rv$mandatory) {
           if (!isTruthy(input[[var]])) {
@@ -356,22 +326,27 @@ edit_data_server <- function(id,
         results_update <- try({
           id <- input$update
 
-          data_updated <- copy(data)
-          data_updated[.datamods_id == id, (data_rv$edit) := lapply(data_rv$edit, function(x) {
-            input[[x]] %||% NA
-          })]
+          data_updated <- data
+          idx <- which(data_updated$.datamods_id == id)
+          if (length(idx) == 1) {
+            for (col in data_rv$edit) {
+              val <- input[[col]] %||% NA
+              # assign value to the cell; preserve column type if possible
+              data_updated[idx, col] <- list(val)
+            }
+          }
 
           res_callback <- callback_update(
             format_edit_data(data, data_rv$colnames),
             format_edit_data(
-              data_updated[.datamods_id == id],
+              if (length(idx) == 1) data_updated[idx, , drop = FALSE] else tibble::tibble(),
               data_rv$colnames,
               data_rv$internal_colnames
             )
           )
           if (isTruthy(res_callback) & !isTRUE(only_callback)) {
-            data_updated <- data_updated[order(.datamods_id)]
-            data_rv$data <- copy(data_updated)
+            data_updated <- dplyr::arrange(data_updated, .datamods_id)
+            data_rv$data <- data_updated
             removeModal()
             update_table(data_updated, data_rv$colnames)
           } else {
@@ -403,9 +378,8 @@ edit_data_server <- function(id,
       # Delete a row ---
       observeEvent(input$delete, {
         req(data_r())
-        data <- copy(data_rv$data)
-        data <- as.data.table(data)
-        row <- data[.datamods_id == input$delete]
+        data <- data_rv$data
+        row <- data[data$.datamods_id == input$delete, , drop = FALSE]
         removeModal()
         showModal(confirmation_window(
           inputId = ns("confirmation_delete_row"),
@@ -415,23 +389,22 @@ edit_data_server <- function(id,
       })
       observeEvent(input$confirmation_delete_row_yes, {
         req(data_r())
-        data <- copy(data_rv$data)
-        data <- as.data.table(data)
+        data <- data_rv$data
 
         results_delete <- try({
 
           res_callback <- callback_delete(
             format_edit_data(data, data_rv$colnames),
             format_edit_data(
-              data[.datamods_id == input$delete],
+              data[data$.datamods_id == input$delete, , drop = FALSE],
               data_rv$colnames,
               data_rv$internal_colnames
             )
           )
 
           if (isTruthy(res_callback) & !isTRUE(only_callback)) {
-            data <- data[.datamods_id != input$delete]
-            data <- data[order(.datamods_id)]
+            data <- dplyr::filter(data, .data$.datamods_id != input$delete)
+            data <- dplyr::arrange(data, .data$.datamods_id)
             data_rv$data <- data
             removeModal()
             update_table(data, data_rv$colnames)
@@ -539,4 +512,3 @@ edit_data_server <- function(id,
     }
   )
 }
-
