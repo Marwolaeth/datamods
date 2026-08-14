@@ -1,30 +1,5 @@
-
 #' @title Create new column
-#'
-#' @description
-#' This module allow to enter an expression to create a new column in a `data.frame`.
-#'
-#'
-#' @param id Module's ID.
-#'
-#' @return A [shiny::reactive()] function returning the data.
-#'
-#' @note User can only use a subset of function: `r paste(list_allowed_operations(), collapse=", ")`.
-#'  You can add more operations using the `allowed_operations` argument, for  example if you want to allow to use package lubridate, you can do:
-#'  ```r
-#'  c(list_allowed_operations(), getNamespaceExports("lubridate"))
-#'  ```
-#'
-#' @export
-#'
-#' @importFrom htmltools tagList tags css
-#' @importFrom shiny NS textInput textAreaInput uiOutput actionButton
-#' @importFrom phosphoricons ph
-#' @importFrom shinyWidgets virtualSelectInput
-#'
-#' @name create-column
-#'
-#' @example examples/create_column.R
+#' ...
 create_column_ui <- function(id) {
   ns <- NS(id)
   tagList(
@@ -93,16 +68,7 @@ create_column_ui <- function(id) {
   )
 }
 
-#' @param data_r A [shiny::reactive()] function returning a `data.frame`.
-#' @param allowed_operations A `list` of allowed operations, see below for details.
-#'
-#' @export
-#'
-#' @rdname create-column
-#'
-#' @importFrom shiny moduleServer reactiveValues observeEvent renderUI req
-#'  updateTextAreaInput reactive bindEvent observe
-#' @importFrom shinyWidgets alert updateVirtualSelect
+
 create_column_server <- function(id,
                                  data_r = reactive(NULL),
                                  allowed_operations = list_allowed_operations()) {
@@ -186,28 +152,19 @@ create_column_server <- function(id,
   )
 }
 
-#' @export
-#'
-#' @rdname create-column
-# @importFrom methods getGroupMembers
+
 list_allowed_operations <- function() {
   c(
     "(", "c",
-    # getGroupMembers("Arith"),
     c("+", "-", "*", "^", "%%", "%/%", "/"),
-    # getGroupMembers("Compare"),
     c("==", ">", "<", "!=", "<=", ">="),
-    # getGroupMembers("Logic"),
     c("&", "|"),
-    # getGroupMembers("Math"),
     c("abs", "sign", "sqrt", "ceiling", "floor", "trunc", "cummax",
       "cummin", "cumprod", "cumsum", "exp", "expm1", "log", "log10",
       "log2", "log1p", "cos", "cosh", "sin", "sinh", "tan", "tanh",
       "acos", "acosh", "asin", "asinh", "atan", "atanh", "cospi", "sinpi",
       "tanpi", "gamma", "lgamma", "digamma", "trigamma"),
-    # getGroupMembers("Math2"),
     c("round", "signif"),
-    # getGroupMembers("Summary"),
     c("max", "min", "range", "prod", "sum", "any", "all"),
     "pmin", "pmax", "mean",
     "paste", "paste0", "substr", "nchar", "trimws",
@@ -218,13 +175,6 @@ list_allowed_operations <- function() {
 }
 
 
-#' @inheritParams shiny::modalDialog
-#' @export
-#'
-#' @importFrom shiny showModal modalDialog textInput
-#' @importFrom htmltools tagList
-#'
-#' @rdname create-column
 modal_create_column <- function(id,
                                 title = i18n("Create a new column"),
                                 easyClose = TRUE,
@@ -244,12 +194,7 @@ modal_create_column <- function(id,
   ))
 }
 
-#' @inheritParams shinyWidgets::WinBox
-#' @export
-#'
-#' @importFrom shinyWidgets WinBox wbOptions wbControls
-#' @importFrom htmltools tagList
-#' @rdname create-column
+
 winbox_create_column <- function(id,
                                  title = i18n("Create a new column"),
                                  options = shinyWidgets::wbOptions(),
@@ -274,8 +219,6 @@ winbox_create_column <- function(id,
 }
 
 
-#' @importFrom rlang parse_expr eval_tidy call2 set_names syms
-#' @importFrom data.table as.data.table :=
 try_compute_column <- function(expression,
                                name,
                                rv,
@@ -289,18 +232,21 @@ try_compute_column <- function(expression,
   if (!are_allowed_operations(funs, allowed_operations)) {
     return(alert_error(i18n("Some operations are not allowed")))
   }
+  expr_parsed <- rlang::parse_expr(expression)
   if (!isTruthy(by)) {
     result <- try(
-      eval_tidy(parse_expr(expression), data = rv$data),
+      rlang::eval_tidy(expr_parsed, data = rv$data),
       silent = TRUE
     )
   } else {
     result <- try(
       {
-        dt <- as.data.table(rv$data)
-        new_col <- NULL
-        dt[, new_col := eval_tidy(parse_expr(expression), data = .SD), by = by]
-        dt$new_col
+        d <- dplyr::as_tibble(rv$data)
+        tmp <- d %>%
+          dplyr::group_by(dplyr::across(dplyr::all_of(by))) %>%
+          dplyr::mutate(.new = !!expr_parsed) %>%
+          dplyr::ungroup()
+        tmp$.new
       },
       silent = TRUE
     )
@@ -313,16 +259,16 @@ try_compute_column <- function(expression,
     return(alert_error(attr(adding_col, "condition")$message))
   }
   code <- if (!isTruthy(by)) {
-    call2("mutate", !!!set_names(list(parse_expr(expression)), name))
+    rlang::call2("mutate", !!!rlang::set_names(list(rlang::parse_expr(expression)), name))
   } else {
-    call2(
+    rlang::call2(
       "mutate",
-      !!!set_names(list(parse_expr(expression)), name),
-      !!!list(.by = expr(c(!!!syms(by))))
+      !!!rlang::set_names(list(rlang::parse_expr(expression)), name),
+      !!!list(.by = rlang::expr(c(!!!rlang::syms(by))))
     )
   }
   attr(rv$data, "code") <- Reduce(
-    f = function(x, y) expr(!!x %>% !!y),
+    f = function(x, y) rlang::expr(!!x %>% !!y),
     x = c(attr(rv$data, "code"),  code)
   )
   alert(
@@ -381,8 +327,6 @@ btn_column <- function(label, type, inputId) {
 }
 
 
-#' @importFrom data.table uniqueN
-#' @importFrom htmltools doRenderTags
 make_choices_with_infos <- function(data) {
   lapply(
     X = seq_along(data),
@@ -403,7 +347,7 @@ make_choices_with_infos <- function(data) {
         NULL
       }
       description <- if (is.atomic(values)) {
-        paste(i18n("Unique values:"), data.table::uniqueN(values))
+        paste(i18n("Unique values:"), dplyr::n_distinct(values))
       } else {
         ""
       }
@@ -417,4 +361,3 @@ make_choices_with_infos <- function(data) {
     }
   )
 }
-
