@@ -11,8 +11,6 @@
 #'
 #' @name i18n
 #'
-#' @importFrom data.table as.data.table :=
-#'
 #' @example examples/i18n.R
 i18n <- function(x, translations = i18n_translations()) {
   if (is.null(translations))
@@ -25,15 +23,15 @@ i18n <- function(x, translations = i18n_translations()) {
     return(translations[[x]])
   }
   if (is.data.frame(translations)) {
-    translations <- as.data.table(translations)
-    translations[, label := as.character(label)]
-    translations <- unique(translations, by = "label")
-    translations[, translation := as.character(translation)]
+    translations <- tibble::as_tibble(translations)
+    translations$label <- as.character(translations$label)
+    translations <- dplyr::distinct(translations, label, .keep_all = TRUE)
+    translations$translation <- as.character(translations$translation)
     if (!x %in% translations$label) {
       warning("i18n: translation for '", x, "' not found!", call. = FALSE)
       return(x)
     }
-    return(translations[label == x, c(translation)])
+    return(dplyr::filter(translations, label == x) %>% dplyr::pull(translation))
   }
   stop("i18n option must be either: a list, a data.frame, or a path to a valid file.", call. = FALSE)
 }
@@ -46,7 +44,6 @@ i18n <- function(x, translations = i18n_translations()) {
 #' @rdname i18n
 #'
 #' @importFrom utils packageName
-#' @importFrom data.table fread
 i18n_translations <- function(package = packageName(parent.frame(2))) {
   if (is.null(package)) {
     opts <- "i18n"
@@ -57,9 +54,21 @@ i18n_translations <- function(package = packageName(parent.frame(2))) {
   if (is.null(language))
     return(NULL)
   if (is.character(language) && i18n_exist(language, package = package)) {
-    language <- fread(file = i18n_file(language, package = package), encoding = "UTF-8", fill = TRUE)
+    language <- tryCatch(
+      readr::read_csv(i18n_file(language, package = package), locale = readr::locale(encoding = "UTF-8"), col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE),
+      error = function(e) {
+        warning("Failed to read i18n file: ", conditionMessage(e), call. = FALSE)
+        return(NULL)
+      }
+    )
   } else if (is.character(language) && file.exists(language)) {
-    language <- fread(file = language, encoding = "UTF-8", fill = TRUE)
+    language <- tryCatch(
+      readr::read_csv(language, locale = readr::locale(encoding = "UTF-8"), col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE),
+      error = function(e) {
+        warning("Failed to read i18n file: ", conditionMessage(e), call. = FALSE)
+        return(NULL)
+      }
+    )
   } else if (is.character(language)) {
     warning(
       "i18n translations not found for : ", language,

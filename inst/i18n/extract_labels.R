@@ -1,10 +1,6 @@
-#' Function to extract labels
+#' Extract labels from R files and update i18n CSVs
 #'
-#' @param folder file directory
-#'
-#' @return an extraction of the labels contained in the directory files
-#' @importFrom stringr str_subset str_extract_all str_remove_all
-#' @export
+#' Utilities to manage translation CSV files stored in inst/i18n.
 #'
 #' @examples extract_labels(folder = "R")
 extract_labels <- function(folder = "R") {
@@ -13,8 +9,8 @@ extract_labels <- function(folder = "R") {
     X = files,
     FUN = function(file) {
       read_file <- readLines(file.path(folder, file))
-      extraction <- str_extract_all(
-        string = str_subset(read_file, "i18n"),
+      extraction <- stringr::str_extract_all(
+        string = stringr::str_subset(read_file, "i18n"),
         pattern = 'i18n\\(".*?"\\)'
       ) |>
         unlist()
@@ -22,9 +18,8 @@ extract_labels <- function(folder = "R") {
     }
   )
   extract_labels <- unlist(list_extractions, recursive = TRUE)
-  str_remove_all(unique(extract_labels), paste(c("i18n", "\"", "\\)", "\\("), collapse = "|"))
+  stringr::str_remove_all(unique(extract_labels), paste(c("i18n", "\"", "\\)", "\\("), collapse = "|"))
 }
-
 
 
 #' Update all csvs that are in inst/i18n
@@ -36,37 +31,44 @@ extract_labels <- function(folder = "R") {
 #' @param ... other arguments passed to datamods::translate_labels
 #'
 #' @return all csvs updated
-#' @importFrom data.table merge fwrite data.table fread unique
 #' @export
 #'
 #' @examples update_csv(labels = extract_labels(folder = "R"))
-#' new_csv_fr <- fread("inst/i18n/fr.csv")
+#' new_csv_fr <- readr::read_csv("inst/i18n/fr.csv")
 update_csv <- function(labels,
                        lang,
                        lang_csv,
                        translation = TRUE,
                        ...) {
-  old <- fread(file = sprintf("inst/i18n/%s.csv", lang_csv), encoding = "UTF-8", fill = TRUE)
-  new <- merge(
-    x = data.table(label = unique(labels)),
-    y = old,
-    by = "label",
-    all.x = TRUE
+  old_file <- sprintf("inst/i18n/%s.csv", lang_csv)
+  old <- tryCatch(
+    readr::read_csv(old_file, locale = readr::locale(encoding = "UTF-8"), col_types = readr::cols(.default = readr::col_character()), show_col_types = FALSE),
+    error = function(e) tibble::tibble(label = character(0), translation = character(0))
   )
 
+  new <- tibble::tibble(label = unique(labels)) %>%
+    dplyr::left_join(old, by = "label")
+
   if (isTRUE(translation)) {
-    final <- rbind(
-      new[!is.na(translation)],
-      translate_labels(labels = new[is.na(translation)]$label, target_language = lang, ...),
-      fill = TRUE
+    missing_labels <- new %>% dplyr::filter(is.na(translation)) %>% dplyr::pull(label)
+    translated <- if (length(missing_labels) > 0) {
+      translate_labels(labels = missing_labels, target_language = lang, ...)
+    } else {
+      tibble::tibble(label = character(0), translation = character(0), comment = character(0))
+    }
+
+    final <- dplyr::bind_rows(
+      new %>% dplyr::filter(!is.na(translation)),
+      translated,
+      .id = NULL
     )
   } else {
     final <- new
   }
 
-  fwrite(final, file = sprintf("inst/i18n/%s.csv", lang_csv), row.names = FALSE, na = '', quote = TRUE)
+  # write CSV
+  readr::write_csv(final, file = old_file, na = "")
 }
-
 
 
 #' Translate labels
@@ -76,11 +78,7 @@ update_csv <- function(labels,
 #' @param target_language the language of the text that you want to translate. See polyglotr::google_supported_languages for the Table with the codes of available languages
 #' @param encoding Name of encoding. See stringi::stri_enc_list() for a complete list
 #'
-#' @importFrom polyglotr google_translate
-#' @importFrom stringr str_conv
-#' @importFrom data.table data.table
-#'
-#' @return a data frame with translated labels
+#' @return a tibble with translated labels
 #' @export
 #'
 #' @examples translate_labels(labels = extract_labels(folder = "R"))
@@ -94,12 +92,9 @@ translate_labels <- function(labels,
     target_language = target_language,
     source_language = source_language
   )
-  data.table(
+  tibble::tibble(
     label = labels,
-    translation = translation |>
-      unlist() |>
-      str_conv(encoding),
+    translation = unlist(translation) %>% stringi::stri_conv(encoding),
     comment = "Automatically translated"
   )
 }
-
