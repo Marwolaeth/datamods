@@ -17,7 +17,7 @@ Authors@R:
              role = "aut",
              email = "shahreyar.abeer@gmail.com"),
       person(given = "Eduard",
-             family = "Szöcs",
+             family = "Sz\u00f6cs",
              role = "ctb",
              email = "eduardszoecs@gmail.com")
       )
@@ -32,7 +32,6 @@ RoxygenNote: 7.3.2
 Imports: 
     bslib,
     classInt,
-    data.table,
     htmltools,
     phosphoricons,
     reactable,
@@ -45,7 +44,11 @@ Imports:
     toastui (>= 0.3.3),
     tools,
     shinybusy,
-    writexl
+    writexl,
+    dplyr,
+    tidyr,
+    readr,
+    purrr
 Suggests: 
     ggplot2,
     htmlwidgets,
