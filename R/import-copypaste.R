@@ -39,5 +39,4 @@ if (inherits(imported, "try-error") || nrow(imported) < 1) {
   )
   temporary_rv$status <- "success"
   temporary_rv$data <- imported
-}
 }, ignoreInit = TRUE)
