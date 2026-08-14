@@ -2,21 +2,25 @@
 
 #' @title Sample rows
 #'
-#' @description The `sample_n` function returns the sample of a dataset from a number of rows chosen by the user.
+#' @description The `sample_n` function returns a sample of rows from a dataset.
 #'
-#' @param data `data.frame`
-#' @param n vector of type `numeric`
+#' @param data `data.frame` or tibble
+#' @param n integer number of rows to sample
 #'
-#' @return the sample of a dataset in the form of `data.table`
+#' @return a tibble (tbl_df) with the sampled rows
 #'
 #' @noRd
-#'
-#' @importFrom data.table as.data.table .N
 #'
 #' @examples
 #' sample_n(iris, 25)
 sample_n <- function(data, n) {
-  as.data.table(data)[sample(x = .N, size = n)]
+  data <- as.data.frame(data)
+  total <- nrow(data)
+  if (is.null(total) || total == 0) return(as_out(data, "tbl_df"))
+  # guard: if n is greater than available rows, take up to available rows
+  n <- min(as.integer(n), total)
+  sampled <- dplyr::slice_sample(dplyr::as_tibble(data), n = n)
+  as_out(sampled, "tbl_df")
 }
 
 
@@ -24,19 +28,28 @@ sample_n <- function(data, n) {
 
 #' @title Sample percentage
 #'
-#' @description The `sample_prop` function returns the sample of a dataset from a percentage chosen by the user.
+#' @description The `sample_prop` function returns a sample of rows from a
+#'  dataset based on the percentage chosen by the user.
 #'
-#' @param data `data.frame`
-#' @param percentage vector of type `numeric`
+#' @param data `data.frame` or tibble
+#' @param prop numeric percentage (0-100)
 #'
-#' @return the sample of a dataset in the form of `data.table`
+#' @return a tibble (tbl_df) with the sampled rows
 #'
 #' @noRd
 #'
-#' @importFrom data.table as.data.table .N
-#'
 sample_prop <- function(data, prop) {
-  as.data.table(data)[sample(x = .N, size = nrow(data) * (prop/100))]
+  data <- as.data.frame(data)
+  total <- nrow(data)
+  if (is.null(total) || total == 0) return(as_out(data, "tbl_df"))
+  # ensure prop is between 0 and 100
+  prop <- as.numeric(prop)
+  prop <- max(0, min(100, prop))
+  size <- floor(total * (prop / 100))
+  # ensure at least 1 row if prop > 0 and total > 0
+  if (prop > 0 && size < 1) size <- 1
+  sampled <- dplyr::slice_sample(dplyr::as_tibble(data), n = size)
+  as_out(sampled, "tbl_df")
 }
 
 
@@ -162,5 +175,3 @@ sample_server <- function(id, data_r = reactive(NULL)) {
     }
   )
 }
-
-
