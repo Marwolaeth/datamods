@@ -503,8 +503,11 @@ edit_data_server <- function(id,
       return(
         reactive({
           req(data_rv$data)
-          data <- format_edit_data(data_rv$data, data_rv$colnames)
-          setattr(data, "selected", selected_r())
+          data <- {
+            d <- format_edit_data(data_rv$data, data_rv$colnames)
+            attr(d, "selected") <- selected_r()
+            d
+          }
           as_out(data, return_class)
         })
       )
